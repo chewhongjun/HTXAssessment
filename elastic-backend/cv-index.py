@@ -21,7 +21,6 @@ def create_es_client():
         
         # Test the connection
         info = es_client.info()
-        print(f"fuck")
         print(f"Successfully connected to Elasticsearch: {info['cluster_name']}")
         return es_client
     except Exception as e:
@@ -66,18 +65,22 @@ def generate_actions(df, index_name):
         # Clean up NaN values, which Elasticsearch might not like depending on type
         for key, value in doc.items():
             if pd.isna(value):
-                doc[key] = None # Or remove the key if that's preferred
-        # Ensure 'duration' is a float (it should be from cv-decode.py output)
+                doc[key] = None
+
+        # Update 'generated_text' if it already exists
+        if 'generated_text' in doc and doc['generated_text'] is not None:
+            doc['generated_text'] = str(doc['generated_text'])
+
+        # Ensure 'duration' is a float and update if it exists
         if 'duration' in doc and doc['duration'] is not None:
-             try:
-                 # Remove 's' if present and convert to float
-                 doc['duration'] = float(str(doc['duration']).replace('s', ''))
-             except ValueError:
-                 doc['duration'] = None # Set to None if conversion fails
+            try:
+                doc['duration'] = float(str(doc['duration']).replace('s', ''))
+            except ValueError:
+                doc['duration'] = None
 
         yield {
             "_index": index_name,
-            "_id": f"{row['filename'].replace('.mp3', '')}", # Use filename (without extension) as ID
+            "_id": f"{row['filename'].replace('.mp3', '')}",
             "_source": doc,
         }
 
@@ -97,6 +100,8 @@ def main():
         print("Please ensure you have run cv-decode.py and the output CSV is at the specified path.")
         return
 
+    
+
     print(f"Loading data from {TRANSCRIPTION_CSV_PATH}...")
     try:
         df = pd.read_csv(TRANSCRIPTION_CSV_PATH)
@@ -112,6 +117,10 @@ def main():
 
     es_client = create_es_client()
     if es_client:
+        if es_client.indices.exists(index=ES_INDEX_NAME):
+            print(f"Index '{ES_INDEX_NAME}' already exists. Deleting and recreating.")
+            es_client.indices.delete(index=ES_INDEX_NAME, ignore=[400, 404])
+            time.sleep(1)  # Give ES a moment to delete
         create_index_mapping(es_client, ES_INDEX_NAME)
         index_data(es_client, df, ES_INDEX_NAME)
         print("Indexing process completed.")
