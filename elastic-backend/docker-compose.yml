@@ -1,0 +1,76 @@
+# elastic-backend/docker-compose.yml
+version: '3.8'
+
+services:
+  es01:
+    image: elasticsearch:8.13.4 # Use a specific version to ensure consistency
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=cv-elasticsearch-cluster
+      - discovery.seed_hosts=es02 # Point to other node for discovery
+      - cluster.initial_master_nodes=es01,es02 # Initial masters for cluster formation
+      - xpack.security.enabled=false # Disable security for easy local development
+      - xpack.security.http.ssl.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Allocate memory to Elasticsearch JVM
+      - http.cors.enabled=true
+      - http.cors.allow-origin=http://localhost:5173
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata01:/usr/share/elasticsearch/data # Mount named volume for persistence
+    ports:
+      - 9200:9200 # Expose HTTP API port for client connections
+      - 9300:9300 # Expose Transport layer port for inter-node communication (optional for client)
+    networks:
+      - elastic_net
+
+  es02:
+    image: elasticsearch:8.13.4 # Same version as es01
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=cv-elasticsearch-cluster
+      - discovery.seed_hosts=es01 # Point to other node for discovery
+      - cluster.initial_master_nodes=es01,es02 # Initial masters for cluster formation
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Allocate memory
+      - http.cors.enabled=true
+      - http.cors.allow-origin=http://localhost:5173
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata02:/usr/share/elasticsearch/data
+    networks:
+      - elastic_net
+
+  kibana: # <--- New Kibana service
+    image: docker.elastic.co/kibana/kibana:8.13.4 # Use official image
+    container_name: kibana-app # <--- A unique name is good!
+    ports:
+      - "5601:5601" # Access Kibana on host port 5601
+    environment:
+      # Connect Kibana to Elasticsearch using its service name 'es01' on the Docker network
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - xpack.security.enabled=false # Must match ES security setting
+    networks:
+      - elastic_net
+    depends_on:
+      - es01 # Ensure Elasticsearch is up before Kibana tries to start
+
+volumes:
+  esdata01:
+    driver: local
+  esdata02:
+    driver: local
+
+networks:
+  elastic_net:
+    driver: bridge

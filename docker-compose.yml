@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  es01:
+    image: elasticsearch:8.13.4
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=cv-elasticsearch-cluster
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - http.cors.enabled=true
+      - http.cors.allow-origin=http://localhost:5173
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - elastic_net
+
+  es02:
+    image: elasticsearch:8.13.4
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=cv-elasticsearch-cluster
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - http.cors.enabled=true
+      - http.cors.allow-origin=http://localhost:5173
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata02:/usr/share/elasticsearch/data
+    networks:
+      - elastic_net
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana-app
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - xpack.security.enabled=false
+    networks:
+      - elastic_net
+    depends_on:
+      - es01
+
+  frontend:
+    build: ./search-ui/examples/sandbox
+    container_name: search-ui-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_ELASTICSEARCH_URL=http://es01:9200
+    networks:
+      - elastic_net
+    depends_on:
+      - es01
+
+volumes:
+  esdata01:
+    driver: local
+  esdata02:
+    driver: local
+
+networks:
+  elastic_net:
+    driver: bridge
